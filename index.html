@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pemandu Wisata Yogyakarta</title>
+    <!-- TomTom -->
+    <script src="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.13.0/maps/maps-web.min.js"></script>
+    <link rel="stylesheet" href="https://api.tomtom.com/maps-sdk-for-web/cdn/6.x/6.13.0/maps/maps.css">
+    <!-- Bootstrap -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        #map {
+            height: 70vh;
+            border-radius: 10px;
+        }
+
+        .tt-popup {
+            background-color: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+        }
+
+        .dashboard {
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .bg-jogja {
+            background-image: linear-gradient(to right, #ff5e13, #ffd600);
+        }
+    </style>
+</head>
+
+<body class="bg-jogja min-vh-100">
+    <div class="container py-4">
+        <h1 class="text-white text-center mb-4 fw-bold">
+            <i class="bi bi-map-fill text-warning"></i> Pemandu Wisata Yogyakarta
+        </h1>
+
+        <div class="row g-3">
+            <div class="col-md-3">
+                <div class="card shadow dashboard">
+                    <div class="card-header bg-warning text-white">
+                        <h5 class="mb-0">Tempat Wisata</h5>
+                    </div>
+                    <div class="card-body" id="place-list">
+                        <p class="text-muted">Tidak ada tempat wisata yang ditemukan.</p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-9">
+                <div class="card bg-light shadow">
+                    <div class="card-body">
+                        <div id="map"></div>
+                        <div class="d-flex justify-content-center gap-2 mt-4">
+                            <button class="btn btn-danger btn-lg px-4" onclick="setStartingLocation()">
+                                <i class="bi bi-geo-fill"></i> Pilih Lokasi Awal
+                            </button>
+                            <button class="btn btn-success btn-lg px-4" onclick="findNearbyPlaces()">
+                                <i class="bi bi-search"></i> Cari Tempat Wisata
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bootstrap JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- SweetAlert2 -->
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+
+    <script>
+        let map = tt.map({ // inisialisasi peta, menampilkan peta
+            key: '62hK7S8DRfGLeA8JreDfxEOkA9nFzAv8',
+            container: 'map',
+            center: [110.3673, -7.7972], // Pusat Yogyakarta
+            zoom: 12
+        });
+
+        let markers = [];
+        let places = [];
+        let lng, lat;
+
+        function setStartingLocation() {
+            Swal.fire({
+                title: 'Petunjuk',
+                text: 'Klik pada peta untuk memilih lokasi awal Anda.',
+                icon: 'info',
+                confirmButtonText: 'OK'
+            });
+            map.on('click', function (e) {
+                const coordinates = e.lngLat;
+                lng = coordinates.lng;
+                lat = coordinates.lat;
+
+                markers.forEach(marker => marker.remove());
+                markers = [];
+
+                new tt.Marker({ color: 'red' })
+                    .setLngLat([lng, lat])
+                    .addTo(map);
+
+                Swal.fire({
+                    title: 'Lokasi Awal Dipilih',
+                    text: `Longitude: ${lng}, Latitude: ${lat}`,
+                    icon: 'success',
+                    confirmButtonText: 'OK'
+                });
+
+                map.off('click'); // Matikan event klik setelah lokasi dipilih
+            });
+        }
+
+        function findNearbyPlaces() {
+            if (!lng || !lat) {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Pilih lokasi awal terlebih dahulu!',
+                    icon: 'error',
+                    confirmButtonText: 'OK'
+                });
+                return;
+            }
+
+            const radius = 2000;
+            fetch(`https://api.tomtom.com/search/2/poiSearch/tourist%20attraction.json?key=62hK7S8DRfGLeA8JreDfxEOkA9nFzAv8&lat=${lat}&lon=${lng}&radius=${radius}&limit=10`)
+                .then(response => response.json())
+                .then(data => {
+                    markers.forEach(marker => marker.remove());
+                    markers = [];
+                    places = data.results;
+
+                    const placeList = document.getElementById('place-list');
+                    placeList.innerHTML = '';
+
+                    if (places.length === 0) {
+                        placeList.innerHTML = '<p class="text-muted">Tidak ada tempat wisata yang ditemukan.</p>';
+                        return;
+                    }
+
+                    places.forEach((place, index) => {
+                        const placePosition = [place.position.lon, place.position.lat];
+                        const marker = new tt.Marker().setLngLat(placePosition).addTo(map);
+                        markers.push(marker);
+
+                        const placeItem = document.createElement('div');
+                        placeItem.className = 'place-item mb-2 p-2 border rounded';
+                        placeItem.innerHTML = `
+                            <strong>${place.poi.name}</strong><br>
+                            <small>${place.address.freeformAddress}</small>
+                            <button class="btn btn-link p-0 text-decoration-none" onclick="calculateRoute(${index})">Lihat Rute</button>
+                        `;
+                        placeList.appendChild(placeItem);
+
+                        marker.setPopup(new tt.Popup().setHTML(`<h5>${place.poi.name}</h5><p>${place.address.freeformAddress}</p>`));
+                    });
+
+                    map.flyTo({ center: [lng, lat], zoom: 14 });
+                })
+                .catch(error => console.error('Error:', error));
+        }
+
+        function calculateRoute(index) {
+            if (!lng || !lat) {
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Pilih lokasi awal terlebih dahulu!',
+                    icon: 'error',
+                    confirmButtonText: 'OK'
+                });
+                return;
+            }
+
+            const destination = places[index].position;
+            const url = `https://api.tomtom.com/routing/1/calculateRoute/${lat},${lng}:${destination.lat},${destination.lon}/json?key=62hK7S8DRfGLeA8JreDfxEOkA9nFzAv8&travelMode=car`;
+
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.routes.length === 0) {
+                        Swal.fire({
+                            title: 'Rute Tidak Ditemukan',
+                            text: 'Tidak ada rute yang tersedia untuk tujuan ini.',
+                            icon: 'error',
+                            confirmButtonText: 'OK'
+                        });
+                        return;
+                    }
+
+                    const route = data.routes[0];
+                    const geoJson = route.legs[0].points.map(point => [point.longitude, point.latitude]);
+
+                    // Hapus rute lama jika ada
+                    map.getLayer('route') && map.removeLayer('route');
+                    map.getSource('route') && map.removeSource('route');
+
+                    // Tambahkan rute ke peta
+                    map.addSource('route', {
+                        type: 'geojson',
+                        data: {
+                            type: 'Feature',
+                            geometry: {
+                                type: 'LineString',
+                                coordinates: geoJson
+                            }
+                        }
+                    });
+
+                    map.addLayer({
+                        id: 'route',
+                        type: 'line',
+                        source: 'route',
+                        layout: {
+                            'line-join': 'round',
+                            'line-cap': 'round'
+                        },
+                        paint: {
+                            'line-color': '#ff0000',
+                            'line-width': 4
+                        }
+                    });
+
+                    Swal.fire({
+                        title: 'Rute Ditampilkan',
+                        text: `Rute menuju ${places[index].poi.name} berhasil ditampilkan.`,
+                        icon: 'success',
+                        confirmButtonText: 'OK'
+                    });
+
+                    // Pindahkan peta untuk memperlihatkan rute
+                    map.fitBounds(tt.LngLatBounds.convert(geoJson));
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    Swal.fire({
+                        title: 'Kesalahan',
+                        text: 'Gagal menghitung rute. Silakan coba lagi.',
+                        icon: 'error',
+                        confirmButtonText: 'OK'
+                    });
+                });
+        }
+
+    </script>
+</body>
+
+</html>
